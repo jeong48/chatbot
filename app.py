@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "DATA"
 SUPPORTED_TEXT_EXTENSIONS = {".txt", ".md", ".csv", ".json"}
 
-# .env의 OPENAI_API_KEY를 환경 변수로 읽습니다.
+# 로컬에서는 .env를 읽고, Streamlit Cloud에서는 st.secrets를 우선 사용합니다.
 load_dotenv(PROJECT_ROOT / ".env")
 
 
@@ -36,6 +36,18 @@ def clean_text(text: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def get_openai_api_key() -> str:
+    """Streamlit Secrets를 우선 사용하고 로컬 .env를 fallback으로 사용합니다."""
+
+    try:
+        cloud_key = st.secrets.get("OPENAI_API_KEY", "")
+    except Exception:
+        # 로컬에 .streamlit/secrets.toml이 없어도 .env 방식으로 실행할 수 있습니다.
+        cloud_key = ""
+
+    return str(cloud_key or os.getenv("OPENAI_API_KEY", "")).strip()
 
 
 def load_documents() -> list[Document]:
@@ -245,7 +257,10 @@ def explain_openai_error(error: Exception) -> str:
             "api.openai.com의 HTTPS(443) 연결을 허용했는지 확인하세요."
         )
     if isinstance(error, AuthenticationError):
-        return "OpenAI API 키가 유효하지 않습니다. .env의 OPENAI_API_KEY를 확인하세요."
+        return (
+            "OpenAI API 키가 유효하지 않습니다. Streamlit Cloud의 App settings > "
+            "Secrets 또는 로컬 .env의 OPENAI_API_KEY를 확인하세요."
+        )
     if isinstance(error, APIStatusError):
         if error.status_code == 429:
             return (
@@ -262,9 +277,12 @@ def main() -> None:
     st.title("📚 문서 기반 RAG 챗봇")
     st.caption("DATA 폴더의 문서만 근거로 답변합니다.")
 
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = get_openai_api_key()
     if not api_key:
-        st.error("OPENAI_API_KEY가 없습니다. 프로젝트 루트의 .env 파일에 API 키를 입력하세요.")
+        st.error(
+            "OPENAI_API_KEY가 없습니다. Streamlit Cloud에서는 App settings > Secrets에 "
+            "OPENAI_API_KEY를 추가하고, 로컬에서는 .env에 입력하세요."
+        )
         st.stop()
 
     try:

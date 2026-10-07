@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# uv-managed local runtime and cache
+.uv-cache/
+.uv-python/
+
+# Local environment variables
+.env

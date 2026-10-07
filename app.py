@@ -18,6 +18,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import APIConnectionError, APIStatusError, AuthenticationError
 from pypdf import PdfReader
+from streamlit.errors import StreamlitSecretNotFoundError
 
 
 # 프로젝트 최상단과 DATA 폴더를 기준으로 경로를 계산합니다.
@@ -42,10 +43,23 @@ def get_openai_api_key() -> str:
     """Streamlit Secrets를 우선 사용하고 로컬 .env를 fallback으로 사용합니다."""
 
     try:
+        # Streamlit Cloud에는 다음처럼 최상위 키를 저장하는 방식을 권장합니다.
+        # OPENAI_API_KEY = "sk-..."
         cloud_key = st.secrets.get("OPENAI_API_KEY", "")
-    except Exception:
-        # 로컬에 .streamlit/secrets.toml이 없어도 .env 방식으로 실행할 수 있습니다.
+
+        # 혹시 [openai] 섹션으로 저장한 경우도 호환합니다.
+        if not cloud_key:
+            openai_section = st.secrets.get("openai", {})
+            if hasattr(openai_section, "get"):
+                cloud_key = openai_section.get("api_key", "")
+    except StreamlitSecretNotFoundError:
+        # 로컬에 .streamlit/secrets.toml이 없어도 .env 방식으로 실행합니다.
         cloud_key = ""
+    except Exception as exc:
+        raise RuntimeError(
+            "Streamlit Secrets를 읽지 못했습니다. Secrets에는 TOML 형식으로 "
+            'OPENAI_API_KEY = "..."를 입력했는지 확인하세요.'
+        ) from exc
 
     return str(cloud_key or os.getenv("OPENAI_API_KEY", "")).strip()
 
@@ -277,7 +291,11 @@ def main() -> None:
     st.title("📚 문서 기반 RAG 챗봇")
     st.caption("DATA 폴더의 문서만 근거로 답변합니다.")
 
-    api_key = get_openai_api_key()
+    try:
+        api_key = get_openai_api_key()
+    except RuntimeError as exc:
+        st.error(str(exc))
+        st.stop()
     if not api_key:
         st.error(
             "OPENAI_API_KEY가 없습니다. Streamlit Cloud에서는 App settings > Secrets에 "
